@@ -1,16 +1,40 @@
-from js import Response
+from js import Response, JSON
 
 async def on_fetch(request, env):
     """
-    Handles the incoming request and returns the visitor's IP address.
+    Returns the visitor's IP, ISP, and ASN as a JSON response.
     """
-    # Cloudflare automatically adds the 'CF-Connecting-IP' header
-    # to incoming requests.
-    client_ip = request.headers.get("CF-Connecting-IP")
+    # 1. Get the IP Address
+    client_ip = request.headers.get("CF-Connecting-IP") or "Unknown"
 
-    # Handle edge cases where the header might be missing (unlikely in CF)
-    if not client_ip:
-        client_ip = "IP not found"
+    # 2. Get ISP/Network Data from the 'cf' object
+    # The 'cf' object contains geolocation and network data.
+    # We use .get() or default values in case the data is missing.
+    cf_data = request.cf
+    
+    isp = "Unknown"
+    asn = 0
+    country = "Unknown"
 
-    # Return the IP as a simple text response
-    return Response.new(client_ip)
+    if cf_data:
+        # 'asOrganization' usually holds the ISP name (e.g., "Comcast Cable")
+        isp = getattr(cf_data, "asOrganization", "Unknown")
+        asn = getattr(cf_data, "asn", 0)
+        country = getattr(cf_data, "country", "Unknown")
+
+    # 3. Build the response dictionary
+    data = {
+        "ip": client_ip,
+        "isp": isp,
+        "asn": asn,
+        "country": country
+    }
+
+    # 4. Return as JSON
+    # We use JSON.stringify from the JS API for easiest compatibility, 
+    # or the standard Python json library.
+    import json
+    return Response.new(
+        json.dumps(data), 
+        headers={"Content-Type": "application/json"}
+    )
