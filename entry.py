@@ -1,40 +1,50 @@
-from js import Response, JSON
+from js import Response
+import json
 
 async def on_fetch(request, env):
-    """
-    Returns the visitor's IP, ISP, and ASN as a JSON response.
-    """
-    # 1. Get the IP Address
-    client_ip = request.headers.get("CF-Connecting-IP") or "Unknown"
+    try:
+        # 1. Get the IP
+        client_ip = request.headers.get("CF-Connecting-IP") or "Unknown"
 
-    # 2. Get ISP/Network Data from the 'cf' object
-    # The 'cf' object contains geolocation and network data.
-    # We use .get() or default values in case the data is missing.
-    cf_data = request.cf
-    
-    isp = "Unknown"
-    asn = 0
-    country = "Unknown"
+        # 2. Safely access the 'cf' object
+        # usage of getattr prevents crashing if 'cf' doesn't exist (common in local testing)
+        cf_data = getattr(request, "cf", None)
+        
+        # Set defaults
+        isp = "Unknown"
+        asn = 0
+        country = "Unknown"
 
-    if cf_data:
-        # 'asOrganization' usually holds the ISP name (e.g., "Comcast Cable")
-        isp = getattr(cf_data, "asOrganization", "Unknown")
-        asn = getattr(cf_data, "asn", 0)
-        country = getattr(cf_data, "country", "Unknown")
+        # 3. Extract data with Type Casting
+        # We wrap values in str() or int() to convert them from JS Proxies to Python types.
+        # This prevents the "Object of type Proxy is not JSON serializable" error.
+        if cf_data:
+            # We use 'or' to handle cases where the field exists but is empty/null
+            isp = str(getattr(cf_data, "asOrganization", "Unknown") or "Unknown")
+            asn = int(getattr(cf_data, "asn", 0) or 0)
+            country = str(getattr(cf_data, "country", "Unknown") or "Unknown")
 
-    # 3. Build the response dictionary
-    data = {
-        "ip": client_ip,
-        "isp": isp,
-        "asn": asn,
-        "country": country
-    }
+        # 4. Build Dictionary
+        data = {
+            "ip": client_ip,
+            "isp": isp,
+            "asn": asn,
+            "country": country
+        }
 
-    # 4. Return as JSON
-    # We use JSON.stringify from the JS API for easiest compatibility, 
-    # or the standard Python json library.
-    import json
-    return Response.new(
-        json.dumps(data), 
-        headers={"Content-Type": "application/json"}
-    )
+        return Response.new(
+            json.dumps(data), 
+            headers={"Content-Type": "application/json"}
+        )
+
+    except Exception as e:
+        # 5. Error Handling
+        # If it crashes, this will return the actual error message to your browser
+        error_response = {
+            "error": "The worker encountered an exception",
+            "details": str(e)
+        }
+        return Response.new(
+            json.dumps(error_response),
+            headers={"Content-Type": "application/json"}
+        )
