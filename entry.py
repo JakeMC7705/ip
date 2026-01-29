@@ -3,11 +3,11 @@ import json
 
 async def on_fetch(request, env):
     try:
-        # 1. Get the IP
+        # 1. Get the IP (Default to "Unknown" if missing)
         client_ip = request.headers.get("CF-Connecting-IP") or "Unknown"
 
         # 2. Safely access the 'cf' object
-        # usage of getattr prevents crashing if 'cf' doesn't exist (common in local testing)
+        # We use getattr to avoid crashing if 'cf' is missing (e.g. local dev)
         cf_data = getattr(request, "cf", None)
         
         # Set defaults
@@ -15,16 +15,13 @@ async def on_fetch(request, env):
         asn = 0
         country = "Unknown"
 
-        # 3. Extract data with Type Casting
-        # We wrap values in str() or int() to convert them from JS Proxies to Python types.
-        # This prevents the "Object of type Proxy is not JSON serializable" error.
+        # 3. Extract data
         if cf_data:
-            # We use 'or' to handle cases where the field exists but is empty/null
+            # We cast to str() to ensure we have Python strings, not JS Proxies
             isp = str(getattr(cf_data, "asOrganization", "Unknown") or "Unknown")
             asn = int(getattr(cf_data, "asn", 0) or 0)
             country = str(getattr(cf_data, "country", "Unknown") or "Unknown")
 
-        # 4. Build Dictionary
         data = {
             "ip": client_ip,
             "isp": isp,
@@ -32,19 +29,13 @@ async def on_fetch(request, env):
             "country": country
         }
 
+        # 4. FIX: Pass headers inside a dictionary as the 2nd positional argument
         return Response.new(
             json.dumps(data), 
-            headers={"Content-Type": "application/json"}
+            {
+                "headers": {"Content-Type": "application/json"}
+            }
         )
 
     except Exception as e:
-        # 5. Error Handling
-        # If it crashes, this will return the actual error message to your browser
-        error_response = {
-            "error": "The worker encountered an exception",
-            "details": str(e)
-        }
-        return Response.new(
-            json.dumps(error_response),
-            headers={"Content-Type": "application/json"}
-        )
+        return Response.new(str(e), {"status": 500})
