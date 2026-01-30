@@ -6,3 +6,7 @@ compatibility_flags = ["python_workers"]
 [observability.logs]
 enabled = true
 invocation_logs = true
+# Add this section to serve static files
+[assets]
+directory = "assets"
+binding = "ASSETS"
